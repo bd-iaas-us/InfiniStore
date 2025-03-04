@@ -203,6 +203,7 @@ void Client::cq_poll_handle(uv_poll_t *handle, int status, int events) {
                 const RemoteMetaRequest *request = GetRemoteMetaRequest(recv_buffer_[wc.wr_id]);
 
                 INFO("Received remote meta request OP {}", op_name(request->op()));
+                INFO("wc.wr_id {}", wc.wr_id);
 
                 switch (request->op()) {
                     case OP_RDMA_READ: {

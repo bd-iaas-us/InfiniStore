@@ -22,41 +22,48 @@ config = infinistore.ClientConfig(
 
 
 async def main():
-    while True:
+    try:
         rdma_conn = infinistore.InfinityConnection(config)
-
-        # FIXME: This is a blocking call, should be async
         await rdma_conn.connect_async()
 
-        src_tensor = torch.tensor(
-            [i for i in range(4096)], device="cpu", dtype=torch.float32
-        )
+        while True:
+            # FIXME: This is a blocking call, should be async
 
-        dst_tensor = torch.zeros(4096, device="cpu", dtype=torch.float32)
+            src_tensor = torch.tensor(
+                [i for i in range(4096)], device="cpu", dtype=torch.float32
+            )
 
-        rdma_conn.register_mr(src_tensor)
-        rdma_conn.register_mr(dst_tensor)
+            dst_tensor = torch.zeros(4096, device="cpu", dtype=torch.float32)
 
-        keys = [generate_uuid() for _ in range(3)]
-        remote_addr = await rdma_conn.allocate_rdma_async(keys, 1024 * 4)
-        print(f"remote addrs is {remote_addr}")
+            rdma_conn.register_mr(src_tensor)
+            rdma_conn.register_mr(dst_tensor)
 
-        await rdma_conn.rdma_write_cache_async(
-            src_tensor, [0, 1024], 1024, remote_addr[:2]
-        )
-        await rdma_conn.rdma_write_cache_async(
-            src_tensor, [2048], 1024, remote_addr[2:]
-        )
+            keys = [generate_uuid() for _ in range(3)]
+            remote_addr = await rdma_conn.allocate_rdma_async(keys, 1024 * 4)
+            print(f"remote addrs is {remote_addr}")
 
-        # await asyncio.gather(rdma_conn.rdma_write_cache_async(src_tensor, [0, 1024], 1024, remote_addr[:2]),
-        #                rdma_conn.rdma_write_cache_async(src_tensor, [2048], 1024, remote_addr[2:]))
+            # await rdma_conn.rdma_write_cache_async(
+            #     src_tensor, [0, 1024], 1024, remote_addr[:2]
+            # )
+            # await rdma_conn.rdma_write_cache_async(
+            #     src_tensor, [2048], 1024, remote_addr[2:]
+            # )
 
-        await rdma_conn.read_cache_async(
-            dst_tensor, [(keys[0], 0), (keys[1], 1024), (keys[2], 2048)], 1024
-        )
+            await asyncio.gather(
+                rdma_conn.rdma_write_cache_async(
+                    src_tensor, [0, 1024], 1024, remote_addr[:2]
+                ),
+                rdma_conn.rdma_write_cache_async(
+                    src_tensor, [2048], 1024, remote_addr[2:]
+                ),
+            )
 
-        assert torch.equal(src_tensor[0:3072].cpu(), dst_tensor[0:3072].cpu())
+            await rdma_conn.read_cache_async(
+                dst_tensor, [(keys[0], 0), (keys[1], 1024), (keys[2], 2048)], 1024
+            )
 
+            assert torch.equal(src_tensor[0:3072].cpu(), dst_tensor[0:3072].cpu())
+    finally:
         rdma_conn.close()
 
 
